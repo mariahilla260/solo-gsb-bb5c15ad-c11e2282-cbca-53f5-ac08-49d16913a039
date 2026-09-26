@@ -2,7 +2,7 @@
 
 /* ================= 全局状态与 API ================= */
 
-let state = { data: { equipment: [], batches: [], cleanings: [] }, knownAllergens: [], trace: null, labelCheck: null };
+let state = { data: { equipment: [], batches: [], cleanings: [] }, knownAllergens: [], trace: null, labelCheck: null, cleaningAudit: null };
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1251,6 +1251,51 @@ function renderLabelCheck() {
     + `<div class="card-grid">${cards}</div>`;
 }
 
+/* ================= 清洗效果审计 ================= */
+
+function renderCleaningAudit() {
+  const wrap = $('#cleaning-audit');
+  const audit = state.cleaningAudit;
+  if (!audit || !audit.cleanings || !audit.cleanings.length) {
+    wrap.innerHTML = '<p class="hint">暂无清洗记录可审计。到「清洗记录」录入后，这里会逐条评估每条清洗实际阻断的批次污染。</p>';
+    return;
+  }
+  const s = audit.summary;
+  const bannerCls = s.effective ? 'plan-banner plan-ok' : 'plan-banner plan-empty';
+  const icon = s.effective ? '🛡️' : '➖';
+  const title = s.effective
+    ? `${s.effective} 条清洗正在阻断共 ${s.blockedTotal} 项批次污染`
+    : '所有清洗当前均无可见收益';
+  const counts = `共 ${s.total} 条清洗：🛡️ ${s.effective} 条有可见阻断 · ➖ ${s.noVisibleBenefit} 条当前无可见收益（按单条移除分别评价）`;
+
+  const cards = audit.cleanings.map((c) => {
+    const badge = c.effective
+      ? `<span class="tag tag-clean">🛡️ 阻断 ${c.blockedCount} 项污染</span>`
+      : '<span class="tag tag-muted">➖ 当前无可见收益</span>';
+    const blockedHtml = c.blocked.length
+      ? `<div class="result-section"><span class="lbl">被阻断的批次污染（移除该清洗后才会出现）：</span>
+          <ul class="label-miss-list">${c.blocked.map((b) => `
+            <li>📦 <b>${esc(b.batchName)}</b> <span class="tag tag-danger">${esc(b.allergen)}</span>
+              <div class="label-first">移除后首次继承：${
+                b.first
+                  ? `${fmtTime(b.first.time)} · ${esc(b.first.equipmentName)}（第 ${b.first.stepIndex + 1} 步）`
+                  : '—'
+              }</div>
+            </li>`).join('')}</ul></div>`
+      : '<div class="result-section hint">单独移除这条清洗后，没有任何批次新增污染：可能清洗时设备上本无这些残留，或与其他清洗共同作用（共同作用按单条移除分别评价）。</div>';
+    return `<div class="result-card">
+      <h3>🧽 ${fmtTime(c.time)} · ${esc(c.equipmentName)} ${badge}</h3>
+      <div class="result-section"><span class="lbl">移除过敏原：</span>${
+        c.allergens.map((a) => `<span class="tag tag-clean">${esc(a)}</span>`).join('')
+      }${c.note ? ` · ${esc(c.note)}` : ''}</div>
+      ${blockedHtml}
+    </div>`;
+  }).join('');
+
+  wrap.innerHTML = `<div class="${bannerCls}"><b>${icon} ${title}</b><div>${counts}</div></div>`
+    + `<div class="card-grid">${cards}</div>`;
+}
+
 function renderEquipmentResults() {
   const wrap = $('#equipment-results');
   if (!state.trace.equipment.length) {
@@ -1273,6 +1318,7 @@ function renderResults() {
   renderTimeline();
   renderBatchResults();
   renderLabelCheck();
+  renderCleaningAudit();
   renderEquipmentResults();
 }
 
