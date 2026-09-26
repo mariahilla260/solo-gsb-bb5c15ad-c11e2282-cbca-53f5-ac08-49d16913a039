@@ -9,6 +9,7 @@ const { planCleaning } = require('./planner');
 const { previewReschedule } = require('./reschedule');
 const { queryPropagation } = require('./propagation');
 const { checkLabels } = require('./labelcheck');
+const { auditCleanings } = require('./cleaningaudit');
 const { buildDemoData } = require('./demo');
 const {
   HttpError,
@@ -41,6 +42,10 @@ function buildState() {
     // 标签核对完全由最新推演结果推导：任何记录变动后随状态一起返回，
     // 上游批次 / 清洗记录改动无需重新保存标签即可得到更新后的核对结果。
     labelCheck: checkLabels(data, traceResult),
+    // 清洗效果审计同样完全由当前记录推导：对每条清洗单独移除并复用同一
+    // 推演引擎重算（基线直接复用本次 trace 结果），记录变更后随状态一起
+    // 返回最新审计结论。
+    cleaningAudit: auditCleanings(data, traceResult),
   };
 }
 
@@ -225,6 +230,16 @@ app.post('/api/propagation', (req, res, next) => {
     const data = store.read();
     const input = normalizePropagationInput(req.body || {}, data);
     res.json({ propagation: queryPropagation(data, input) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---- 清洗效果审计（只读分析，绝不写入或修改原始记录） ---------------------
+
+app.get('/api/cleaning-audit', (req, res, next) => {
+  try {
+    res.json({ audit: auditCleanings(store.read()) });
   } catch (err) {
     next(err);
   }

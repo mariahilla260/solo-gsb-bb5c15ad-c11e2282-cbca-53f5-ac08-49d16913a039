@@ -2,7 +2,7 @@
 
 /* ================= 全局状态与 API ================= */
 
-let state = { data: { equipment: [], batches: [], cleanings: [] }, knownAllergens: [], trace: null, labelCheck: null };
+let state = { data: { equipment: [], batches: [], cleanings: [] }, knownAllergens: [], trace: null, labelCheck: null, cleaningAudit: null };
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1251,6 +1251,53 @@ function renderLabelCheck() {
     + `<div class="card-grid">${cards}</div>`;
 }
 
+/* ================= 清洗效果审计 ================= */
+
+function renderCleaningAudit() {
+  const wrap = $('#cleaning-audit');
+  const audit = state.cleaningAudit;
+  if (!audit || !audit.cleanings || !audit.cleanings.length) {
+    wrap.innerHTML = '<p class="hint">暂无清洗记录可审计：到「清洗记录」录入后，这里会逐条评估每条清洗实际阻断的批次污染。</p>';
+    return;
+  }
+  const s = audit.summary;
+  const bannerCls = s.blockedTotal ? 'plan-banner plan-ok' : 'plan-banner plan-empty';
+  const icon = s.blockedTotal ? '🛡️' : 'ℹ️';
+  const title = s.blockedTotal
+    ? `${s.withBenefit} 条清洗正在阻断共 ${s.blockedTotal} 项批次污染`
+    : '现有清洗均未阻断任何批次污染';
+  const counts = `共 ${s.total} 条清洗：🛡️ ${s.withBenefit} 条有可见收益 · ⬜ ${s.noBenefit} 条当前无可见收益`;
+
+  const cards = audit.cleanings.map((c) => {
+    const statusTag = c.hasVisibleBenefit
+      ? `<span class="tag tag-clean">🛡️ 阻断 ${c.blockedCount} 项污染</span>`
+      : '<span class="tag tag-muted">⬜ 当前无可见收益</span>';
+    const requested = c.allergens.map((a) => `<span class="tag tag-clean">${esc(a)}</span>`).join('');
+    const actual = c.actuallyRemoved.length
+      ? `当时实际移除：${c.actuallyRemoved.map((a) => `<span class="tag tag-clean">${esc(a)}</span>`).join('')}`
+      : '当时设备上并无勾选的过敏原（本次清洗未改变残留）';
+    const blockedHtml = c.hasVisibleBenefit
+      ? `<div class="result-section"><span class="lbl">移除该清洗后新增的批次污染（即被本清洗阻断）：</span>
+          <ul class="label-miss-list">${c.blocked.map((b) => {
+            const f = b.first;
+            const firstLine = f
+              ? `<div class="label-first">移除情景下首次继承：${fmtTime(f.time)} · ${esc(f.equipmentName)}（第 ${f.stepIndex + 1} 步）</div>`
+              : '';
+            return `<li><b>批次「${esc(b.batchName)}」</b> 新增 <span class="tag tag-danger">${esc(b.allergen)}</span>${firstLine}</li>`;
+          }).join('')}</ul></div>`
+      : '<div class="result-section hint">移除该清洗后，没有任何批次新增最终过敏原（按单条移除口径评价）。</div>';
+    return `<div class="result-card">
+      <h3>🧽 ${fmtTime(c.time)} · ${esc(c.equipmentName)} ${statusTag}</h3>
+      <div class="result-section"><span class="lbl">勾选移除：</span>${requested}${c.note ? ` · ${esc(c.note)}` : ''}</div>
+      <div class="result-section"><span class="lbl">当时效果：</span>${actual}</div>
+      ${blockedHtml}
+    </div>`;
+  }).join('');
+
+  wrap.innerHTML = `<div class="${bannerCls}"><b>${icon} ${title}</b><div>${counts}</div></div>`
+    + `<div class="card-grid">${cards}</div>`;
+}
+
 function renderEquipmentResults() {
   const wrap = $('#equipment-results');
   if (!state.trace.equipment.length) {
@@ -1273,6 +1320,7 @@ function renderResults() {
   renderTimeline();
   renderBatchResults();
   renderLabelCheck();
+  renderCleaningAudit();
   renderEquipmentResults();
 }
 
